@@ -1,0 +1,17 @@
+[project]
+name = "cybersecurityproject"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv>=0.9.9",
+    "huggingface>=0.0.1",
+    "huggingface-hub>=1.4.1",
+    "ollama>=0.6.1",
+    "openai>=2.24.0",
+    "psycopg2>=2.9.11",
+    "sentence-transformers>=5.2.3",
+    "tqdm>=4.67.3",
+    "wandb>=0.25.0",
+]
