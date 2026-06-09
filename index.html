@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fine-Tuning phi-2 on CVE Data — A Security-Focused LLM Experiment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Special+Elite&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment:   #f5ecd7;
+    --parchment-dark: #ede0c4;
+    --ink:         #2a2118;
+    --sepia:       #6b4f2e;
+    --sepia-light: #9b7a52;
+    --sepia-faint: #d9c9b0;
+    --orbital:     #8a9baa;
+    --orbital-faint: #c8d4db;
+    --radium:      #6aab78;
+    --radium-faint:#b8d9bc;
+    --rule:        #c2ae92;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { background: #e8dcc8; }
+
+  body {
+    background: var(--parchment);
+    color: var(--ink);
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.8;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 0 80px 0;
+    position: relative;
+    box-shadow: 0 0 60px rgba(0,0,0,0.18);
+    /* subtle paper texture via gradient noise */
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 31px,
+        rgba(180,155,110,0.07) 31px,
+        rgba(180,155,110,0.07) 32px
+      );
+  }
+
+  /* ── ORBITAL WATERMARK ── */
+  .orbital-bg {
+    position: absolute;
+    top: 0; right: -60px;
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    padding: 60px 60px 40px 60px;
+    border-bottom: 1.5px solid var(--rule);
+    overflow: hidden;
+  }
+
+  .header-atom {
+    position: absolute;
+    top: -30px; right: -30px;
+    opacity: 0.12;
+    pointer-events: none;
+  }
+
+  .journal-label {
+    font-family: 'Special Elite', 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--sepia-light);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .journal-label::after {
+    content: '';
+    flex: 1;
+    height: 0.5px;
+    background: var(--sepia-faint);
+    display: block;
+  }
+
+  h1 {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 36px;
+    font-weight: normal;
+    line-height: 1.25;
+    color: var(--ink);
+    max-width: 580px;
+    margin-bottom: 18px;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--sepia);
+    max-width: 500px;
+    margin-bottom: 30px;
+    line-height: 1.6;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    font-family: 'Special Elite', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--sepia-light);
+  }
+
+  .meta-item span {
+    color: var(--sepia);
+    text-transform: uppercase;
+  }
+
+  /* ── MAIN CONTENT ── */
+  main {
+    padding: 0 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    margin-top: 52px;
+    position: relative;
+  }
+
+  h2 {
+    font-family: 'Special Elite', 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--sepia-light);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  h2::before {
+    content: '';
+    width: 24px;
+    height: 1px;
+    background: var(--sepia-light);
+    display: block;
+    flex-shrink: 0;
+  }
+
+  h3 {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 20px;
+    font-weight: normal;
+    color: var(--ink);
+    margin-top: 32px;
+    margin-bottom: 10px;
+    border-bottom: 0.5px solid var(--sepia-faint);
+    padding-bottom: 5px;
+  }
+
+  p {
+    margin-bottom: 16px;
+    color: var(--ink);
+  }
+
+  /* ── DROPCAP ── */
+  .dropcap::first-letter {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 72px;
+    line-height: 0.78;
+    float: left;
+    margin: 6px 10px 0 -3px;
+    color: var(--sepia);
+  }
+
+  /* ── ABSTRACT BOX ── */
+  .abstract {
+    border: 0.5px solid var(--sepia-faint);
+    border-left: 3px solid var(--sepia-light);
+    padding: 20px 24px;
+    margin: 40px 0;
+    background: rgba(107,79,46,0.04);
+    position: relative;
+  }
+
+  .abstract-label {
+    font-family: 'Special Elite', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia-light);
+    margin-bottom: 10px;
+  }
+
+  .abstract p {
+    font-style: italic;
+    font-size: 15.5px;
+    color: var(--sepia);
+    margin: 0;
+    line-height: 1.75;
+  }
+
+  /* ── CODE BLOCKS ── */
+  pre {
+    background: rgba(42,33,24,0.05);
+    border: 0.5px solid var(--sepia-faint);
+    border-left: 2px solid var(--orbital);
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 20px 0;
+    position: relative;
+  }
+
+  pre::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -1px;
+    right: 14px;
+    font-family: 'Special Elite', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--orbital);
+    background: var(--parchment);
+    padding: 0 6px;
+    transform: translateY(-50%);
+  }
+
+  code {
+    font-family: 'Courier Prime', 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--sepia);
+    line-height: 1.7;
+  }
+
+  p code {
+    font-size: 13.5px;
+    background: rgba(107,79,46,0.07);
+    padding: 1px 5px;
+    border: 0.5px solid var(--sepia-faint);
+    color: var(--sepia);
+  }
+
+  /* ── ANNOTATION / ASIDE ── */
+  .annotation {
+    float: right;
+    width: 180px;
+    margin: 0 -40px 20px 24px;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    font-size: 12.5px;
+    color: var(--sepia-light);
+    line-height: 1.55;
+    border-top: 0.5px solid var(--sepia-faint);
+    padding-top: 8px;
+  }
+
+  /* ── SCHEMA / PIPELINE DIAGRAM ── */
+  .pipeline {
+    margin: 28px 0;
+    padding: 24px;
+    border: 0.5px solid var(--sepia-faint);
+    background: rgba(107,79,46,0.03);
+    position: relative;
+  }
+
+  .pipeline-title {
+    font-family: 'Special Elite', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia-light);
+    margin-bottom: 18px;
+    text-align: center;
+  }
+
+  .pipeline-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .pipeline-step {
+    text-align: center;
+    padding: 10px 14px;
+    border: 0.5px solid var(--sepia-faint);
+    background: var(--parchment);
+    min-width: 90px;
+    position: relative;
+  }
+
+  .pipeline-step-num {
+    font-family: 'Special Elite', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--sepia-light);
+    margin-bottom: 4px;
+  }
+
+  .pipeline-step-label {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.3;
+  }
+
+  .pipeline-arrow {
+    font-family: 'IM Fell English', serif;
+    font-size: 18px;
+    color: var(--sepia-faint);
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* ── CONFIG TABLE ── */
+  .config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 0.5px solid var(--sepia-faint);
+    margin: 20px 0;
+    overflow: hidden;
+  }
+
+  .config-row {
+    display: contents;
+  }
+
+  .config-key {
+    font-family: 'Courier Prime', monospace;
+    font-size: 12.5px;
+    color: var(--sepia-light);
+    padding: 9px 14px;
+    border-bottom: 0.5px solid var(--sepia-faint);
+    border-right: 0.5px solid var(--sepia-faint);
+    background: rgba(107,79,46,0.04);
+  }
+
+  .config-val {
+    font-family: 'Courier Prime', monospace;
+    font-size: 12.5px;
+    color: var(--ink);
+    padding: 9px 14px;
+    border-bottom: 0.5px solid var(--sepia-faint);
+  }
+
+  /* ── ROUGE RESULTS ── */
+  .rouge-card {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 24px 0;
+  }
+
+  .rouge-item {
+    border: 0.5px solid var(--sepia-faint);
+    padding: 18px 16px;
+    text-align: center;
+    background: rgba(106,171,120,0.05);
+    border-top: 2px solid var(--radium);
+    position: relative;
+  }
+
+  .rouge-label {
+    font-family: 'Special Elite', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia-light);
+    margin-bottom: 8px;
+  }
+
+  .rouge-score {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 30px;
+    color: var(--radium);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .rouge-desc {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    font-size: 11.5px;
+    color: var(--sepia-light);
+  }
+
+  /* ── INFERENCE COMPARISON ── */
+  .inference-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+  }
+
+  .inference-box {
+    border: 0.5px solid var(--sepia-faint);
+    padding: 16px;
+  }
+
+  .inference-box-label {
+    font-family: 'Special Elite', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 0.5px solid var(--sepia-faint);
+  }
+
+  .base-label { color: var(--orbital); }
+  .fine-label  { color: var(--radium); }
+
+  .inference-box p {
+    font-family: 'Courier Prime', monospace;
+    font-size: 12px;
+    color: var(--sepia);
+    margin: 0;
+    line-height: 1.65;
+  }
+
+  /* ── FOOTNOTE / CALLOUT ── */
+  .callout {
+    border: 0.5px dashed var(--orbital-faint);
+    padding: 14px 18px;
+    margin: 24px 0;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .callout-icon {
+    font-family: 'IM Fell English', serif;
+    font-size: 22px;
+    color: var(--orbital);
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .callout p {
+    font-size: 14.5px;
+    color: var(--sepia);
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* ── ORBITAL DIVIDER ── */
+  .orbital-divider {
+    text-align: center;
+    margin: 50px 0 0 0;
+    color: var(--sepia-faint);
+    font-size: 22px;
+    letter-spacing: 14px;
+    user-select: none;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: 60px;
+    padding: 30px 60px;
+    border-top: 1.5px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .footer-note {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--sepia-light);
+    max-width: 340px;
+    line-height: 1.6;
+  }
+
+  .footer-atom {
+    opacity: 0.15;
+  }
+
+  /* ── NUMBER ANNOTATIONS (like Bohr's pencil notations) ── */
+  .margin-note {
+    position: absolute;
+    left: -52px;
+    font-family: 'Special Elite', monospace;
+    font-size: 10px;
+    color: var(--sepia-faint);
+    letter-spacing: 0.05em;
+    transform: rotate(-2deg);
+  }
+
+  /* ── HIGHLIGHT ── */
+  mark {
+    background: rgba(106,171,120,0.2);
+    color: var(--ink);
+    padding: 0 2px;
+  }
+
+  @media (max-width: 700px) {
+    header, main { padding-left: 28px; padding-right: 28px; }
+    h1 { font-size: 26px; }
+    .inference-pair { grid-template-columns: 1fr; }
+    .rouge-card { grid-template-columns: 1fr; }
+    .annotation { float: none; width: auto; margin: 0 0 16px 0; }
+    footer { padding: 24px 28px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Atom orbital watermark behind header -->
+<svg class="header-atom" width="420" height="420" viewBox="0 0 420 420" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <g fill="none" stroke="#6b4f2e" stroke-width="0.7">
+    <circle cx="210" cy="210" r="30"/>
+    <circle cx="210" cy="210" r="58"/>
+    <circle cx="210" cy="210" r="86"/>
+    <circle cx="210" cy="210" r="114"/>
+    <circle cx="210" cy="210" r="142"/>
+    <circle cx="210" cy="210" r="170"/>
+    <circle cx="210" cy="210" r="200"/>
+  </g>
+  <!-- electron dots -->
+  <g fill="#6b4f2e">
+    <circle cx="240" cy="210" r="2.5"/>
+    <circle cx="268" cy="210" r="2.5"/>
+    <circle cx="268" cy="232" r="2.5"/>
+    <circle cx="268" cy="188" r="2.5"/>
+    <circle cx="296" cy="210" r="2.5"/>
+    <circle cx="352" cy="210" r="2.5"/>
+  </g>
+  <!-- radial guide marks like Bohr's original -->
+  <g stroke="#6b4f2e" stroke-width="0.4" opacity="0.5">
+    <line x1="210" y1="10" x2="210" y2="40"/>
+    <line x1="210" y1="380" x2="210" y2="410"/>
+    <line x1="10" y1="210" x2="40" y2="210"/>
+    <line x1="380" y1="210" x2="410" y2="210"/>
+  </g>
+  <!-- Bohr-style notations -->
+  <text x="244" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">2</text>
+  <text x="272" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">8</text>
+  <text x="300" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">18</text>
+  <text x="328" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">32</text>
+  <text x="356" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">18</text>
+  <text x="384" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">8</text>
+  <text x="408" y="204" font-family="'Courier New'" font-size="9" fill="#9b7a52">2</text>
+</svg>
+
+<header>
+  <div class="journal-label">Technical Correspondence &nbsp;·&nbsp; Machine Learning &nbsp;·&nbsp; Cybersecurity</div>
+  <h1>Fine-Tuning Microsoft phi-2 on CVE Data: Reinforcing Computer Security with Language Models</h1>
+  <p class="subtitle">An account of supervised fine-tuning, quantised adaptation, and structured evaluation of a small language model on the Common Vulnerabilities and Exposures corpus.</p>
+  <div class="meta-row">
+    <div class="meta-item"><span>Author</span> — Saikiran Pennam</div>
+    <div class="meta-item"><span>Model</span> — microsoft/phi-2</div>
+    <div class="meta-item"><span>Dataset</span> — new_cves_pps</div>
+    <div class="meta-item"><span>Method</span> — QLoRA · SFT</div>
+  </div>
+</header>
+
+<main>
+
+  <div class="abstract">
+    <div class="abstract-label">Abstract</div>
+    <p>This paper describes a pipeline for fine-tuning Microsoft's phi-2 language model on a curated dataset of Common Vulnerabilities and Exposures (CVE) records, with the aim of producing a domain-specialist model capable of accurately describing software vulnerabilities on demand. We employ 4-bit quantisation via BitsAndBytes, parameter-efficient adaptation via LoRA, and evaluation via ROUGE overlap metrics on a held-out validation set.</p>
+  </div>
+
+  <!-- ────────────────────────── §1 INTRODUCTION ── -->
+  <section>
+    <h2>I. Introduction</h2>
+    <p class="dropcap">The field of cybersecurity demands rapid, accurate recall of vulnerability information. A practitioner querying the nature of <code>CVE-2012-0782</code> should receive a precise, technically grounded response — not a hallucinated account. General-purpose language models, trained on broad internet corpora, frequently fall short of this standard. They may confabulate identifiers, mix up affected versions, or describe mitigations that do not exist.</p>
+
+    <aside class="annotation">Fine-tuning on domain-specific instruction data is among the most cost-effective methods of improving LLM factuality within a narrow field.</aside>
+
+    <p>The experiment described here takes a direct approach: gather a structured CVE dataset, format it as instruction-response pairs, and fine-tune a compact but capable base model — Microsoft's phi-2 — using modern parameter-efficient techniques that make the process feasible on a single GPU. The result is a specialist model, <code>phi2-FT-improved-cves-data</code>, deployed to the Hugging Face Hub for evaluation and inference.</p>
+  </section>
+
+  <!-- ────────────────────────── §2 PIPELINE ── -->
+  <section>
+    <h2>II. Pipeline Overview</h2>
+
+    <div class="pipeline">
+      <div class="pipeline-title">Full Training &amp; Inference Pipeline</div>
+      <div class="pipeline-steps">
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">01</div>
+          <div class="pipeline-step-label">Load CVE Dataset</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">02</div>
+          <div class="pipeline-step-label">Format &amp; Preprocess</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">03</div>
+          <div class="pipeline-step-label">4-bit Quantise</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">04</div>
+          <div class="pipeline-step-label">LoRA Adapt</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">05</div>
+          <div class="pipeline-step-label">SFT Train</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">06</div>
+          <div class="pipeline-step-label">ROUGE Evaluate</div>
+        </div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-num">07</div>
+          <div class="pipeline-step-label">Hub Deploy</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────── §3 DATA ── -->
+  <section>
+    <h2>III. Data Loading &amp; Preprocessing</h2>
+
+    <p>The dataset, <mark>saikiranpennam/new_cves_pps</mark>, is hosted on the Hugging Face Hub and contains three canonical splits. Each record pairs a natural-language instruction — typically a request for a CVE description — with a structured response.</p>
+
+    <div class="config-grid">
+      <div class="config-key">Split</div>         <div class="config-val">Records used</div>
+      <div class="config-key">Training</div>       <div class="config-val">10,000 (sampled from full split)</div>
+      <div class="config-key">Validation</div>     <div class="config-val">3,000</div>
+      <div class="config-key">Test</div>           <div class="config-val">3,000</div>
+    </div>
+
+    <p>Each row is formatted into a single string template before training. The <code>[INST]</code> and <code>[/INST]</code> tokens demarcate the instruction from the expected response — a convention that allows the model to learn the boundary between prompt and completion cleanly.</p>
+
+    <pre data-label="Python · format_rows"><code>def format_rows(row):
+    instruction = row['Instruction']
+    response    = row['Response']
+    return f"[INST]{instruction}[/INST]{response}"
+
+df['Formatted'] = df.apply(format_rows, axis=1)</code></pre>
+
+    <p>After formatting, each split is persisted as a CSV file and reloaded as a Hugging Face <code>Dataset</code> object. A histogram analysis of text lengths across splits confirmed a broadly consistent distribution, ruling out major length-based biases between splits.</p>
+  </section>
+
+  <!-- ────────────────────────── §4 MODEL ── -->
+  <section>
+    <h2>IV. Model Architecture &amp; Quantisation</h2>
+
+    <h3>The phi-2 Base Model</h3>
+    <p>Microsoft's <code>phi-2</code> is a 2.7 billion parameter transformer trained on a curated mixture of synthetic educational text and filtered web data. Despite its modest scale, phi-2 demonstrates strong reasoning capabilities on benchmarks, making it an attractive base for domain fine-tuning where compute is constrained.</p>
+
+    <h3>4-bit Quantisation (QLoRA)</h3>
+    <p>Loading phi-2 directly in full precision would require approximately 11 GB of VRAM. Instead, the model is loaded in <code>nf4</code> (NormalFloat 4-bit) quantisation via the BitsAndBytes library, with float16 used for the compute dtype. This reduces the active memory footprint dramatically, enabling training on a single NVIDIA GPU.</p>
+
+    <pre data-label="Python · BnbConfig"><code>bnb_config = BitsAndBytesConfig(
+    load_in_4bit          = True,
+    bnb_4bit_quant_type   = "nf4",
+    bnb_4bit_compute_dtype= torch.float16,
+    bnb_4bit_use_double_quant = False
+)</code></pre>
+
+    <h3>LoRA Adaptation</h3>
+    <p>Rather than updating all 2.7 billion parameters, LoRA (Low-Rank Adaptation) introduces a small set of trainable matrices alongside frozen base weights. The rank <code>r=32</code> and scaling factor <code>alpha=64</code> were chosen to balance expressiveness against parameter budget. The adapter targets the attention projection weights and feed-forward layers specific to phi-2's architecture.</p>
+
+    <pre data-label="Python · LoraConfig"><code>peft_config = LoraConfig(
+    r              = 32,
+    lora_alpha     = 64,
+    lora_dropout   = 0.05,
+    bias           = "none",
+    task_type      = "CAUSAL_LM",
+    target_modules = ["Wqkv", "fc1", "fc2"]
+)</code></pre>
+
+    <div class="callout">
+      <div class="callout-icon">※</div>
+      <p>The target modules <code>Wqkv</code>, <code>fc1</code>, and <code>fc2</code> correspond to phi-2's combined query-key-value projection and both layers of its MLP block — covering the principal sites of knowledge encoding in the transformer.</p>
+    </div>
+  </section>
+
+  <!-- ────────────────────────── §5 TRAINING ── -->
+  <section>
+    <h2>V. Training Configuration</h2>
+
+    <p>Training was conducted via Hugging Face's <code>SFTTrainer</code>, which wraps the standard training loop with supervised fine-tuning conveniences. Experiment runs were tracked with Weights &amp; Biases under the project <em>Reinforcing_Computer_Security_with_LLMs</em>.</p>
+
+    <div class="config-grid">
+      <div class="config-key">num_train_epochs</div>         <div class="config-val">2</div>
+      <div class="config-key">per_device_train_batch_size</div> <div class="config-val">4</div>
+      <div class="config-key">gradient_accumulation_steps</div> <div class="config-val">5 (effective batch = 20)</div>
+      <div class="config-key">learning_rate</div>             <div class="config-val">5e-5</div>
+      <div class="config-key">lr_scheduler_type</div>         <div class="config-val">cosine</div>
+      <div class="config-key">optimizer</div>                 <div class="config-val">paged_adamw_8bit</div>
+      <div class="config-key">warmup_steps</div>              <div class="config-val">50</div>
+      <div class="config-key">weight_decay</div>              <div class="config-val">0.01</div>
+      <div class="config-key">max_seq_length</div>            <div class="config-val">690 tokens</div>
+      <div class="config-key">eval_steps / save_steps</div>   <div class="config-val">100</div>
+      <div class="config-key">gradient_checkpointing</div>    <div class="config-val">enabled</div>
+    </div>
+
+    <p>The use of <code>paged_adamw_8bit</code> offloads optimizer states to CPU memory in a paged fashion, further reducing GPU VRAM pressure. A cosine learning rate schedule with warmup is generally preferred over a flat schedule for fine-tuning, as it avoids overshooting learned representations early in training. The best checkpoint (by validation loss) is automatically retained at training end.</p>
+  </section>
+
+  <!-- ────────────────────────── §6 EVALUATION ── -->
+  <section>
+    <h2>VI. Evaluation — ROUGE Metrics</h2>
+
+    <p>Evaluation was performed on 100 samples drawn from the validation set, generating completions at <code>max_length=200</code> tokens and comparing against the ground-truth responses using ROUGE. ROUGE (Recall-Oriented Understudy for Gisting Evaluation) measures n-gram overlap between generated and reference text — a standard metric for summarisation and generation quality.</p>
+
+    <div class="rouge-card">
+      <div class="rouge-item">
+        <div class="rouge-label">ROUGE-1</div>
+        <div class="rouge-score">1-gram</div>
+        <div class="rouge-desc">Unigram overlap — vocabulary coverage</div>
+      </div>
+      <div class="rouge-item">
+        <div class="rouge-label">ROUGE-2</div>
+        <div class="rouge-score">2-gram</div>
+        <div class="rouge-desc">Bigram overlap — phrase-level fidelity</div>
+      </div>
+      <div class="rouge-item">
+        <div class="rouge-label">ROUGE-L</div>
+        <div class="rouge-score">LCS</div>
+        <div class="rouge-desc">Longest common subsequence — fluency proxy</div>
+      </div>
+    </div>
+
+    <p>Results were computed across three sample sizes (1, 10, and 100 validation examples) to observe consistency as the evaluation set grows. The full scores were serialised to <code>rouge_results_100.csv</code> for downstream analysis. ROUGE scores, whilst widely adopted, measure surface overlap rather than semantic correctness; a future iteration of this work might supplement them with BERTScore or domain-expert human evaluation.</p>
+
+    <div class="callout">
+      <div class="callout-icon">⚗</div>
+      <p>Resource and time constraints restricted full evaluation to 100 of the 3,000 validation samples. The primary constraint was GPU inference time per generated token at <code>max_length=200</code>.</p>
+    </div>
+  </section>
+
+  <!-- ────────────────────────── §7 INFERENCE ── -->
+  <section>
+    <h2>VII. Inference — Base vs. Fine-Tuned</h2>
+
+    <p>Three inference configurations were tested against the same prompt: the unmodified <code>microsoft/phi-2</code> base model, a first-generation fine-tuned checkpoint, and the improved fine-tuned model with a more carefully structured prompt template.</p>
+
+    <p>The query used throughout was a CVE identifier lookup:</p>
+
+    <pre data-label="Prompt · Base model"><code>prompt = "What is the description of CVE-2012-0782?"</code></pre>
+
+    <pre data-label="Prompt · Improved fine-tuned model"><code>prompt = """
+You are an expert in the field of cybersecurity.
+Provide the necessary information to answer the
+questions for the following CVE: CVE-2012-0782.
+
+Response:
+"""</code></pre>
+
+    <div class="inference-pair">
+      <div class="inference-box">
+        <div class="inference-box-label base-label">Base phi-2</div>
+        <p>The base model produces a generic response. It may partially describe the CVE concept but tends to hallucinate specific technical details — affected software versions, patch identifiers, or CVSS scores that are fabricated rather than retrieved from its training distribution.</p>
+      </div>
+      <div class="inference-box">
+        <div class="inference-box-label fine-label">Fine-tuned (improved)</div>
+        <p>The fine-tuned model, given a role-contextualised prompt, produces a structured, CVE-idiomatic response. It correctly anchors to the identifier, describes the affected component, and provides a technically grounded description consistent with the NVD record format.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────── §8 DEPLOYMENT ── -->
+  <section>
+    <h2>VIII. Deployment</h2>
+
+    <p>The fine-tuned model and all associated training artefacts — checkpoints, training logs, configuration files — were uploaded to the Hugging Face Hub as a private repository under <code>saikiranpennam/phi2-FT-improved-cves-data</code>. The model shards were set to a maximum size of 7 GB to remain within Hub file size limits.</p>
+
+    <pre data-label="Python · Hub Upload"><code>model.push_to_hub(
+    "saikiranpennam/phi2-FT-improved-cves-data",
+    private=True,
+    max_shard_size="7GB"
+)
+
+huggingface_hub.upload_folder(
+    repo_id     = "saikiranpennam/phi2-FT-improved-cves-data",
+    folder_path = "/content/cveFT"  # checkpoints &amp; logs
+)</code></pre>
+  </section>
+
+  <!-- ────────────────────────── §9 CONCLUSION ── -->
+  <section>
+    <h2>IX. Conclusion &amp; Further Work</h2>
+
+    <p>This pipeline demonstrates that a small, quantised language model can be efficiently adapted to a specialist cybersecurity domain using publicly available data and open-source tooling. The combination of NF4 quantisation, LoRA parameter efficiency, and a structured instruction format yields a model that responds to CVE queries in a markedly more accurate and domain-consistent manner than the base phi-2 checkpoint.</p>
+
+    <p>Several avenues remain open for improvement. The training sample (10,000 records) represents a fraction of the full CVE corpus; expanding this should improve recall of less-common vulnerability patterns. The evaluation metric — ROUGE — is a surface-level proxy; future work should incorporate embedding-based similarity or structured information extraction to measure factual accuracy rather than lexical overlap. Finally, the prompt template may be further refined: a few-shot format, with examples of correct CVE descriptions prepended, may improve generation quality without any additional training.</p>
+
+    <p>The model is available for evaluation at the above Hugging Face repository. All training code is available in the accompanying Jupyter notebook.</p>
+  </section>
+
+  <div class="orbital-divider">· · ○ · ○ · ○ · · </div>
+
+</main>
+
+<!-- Footer atom diagram -->
+<footer>
+  <div class="footer-note">
+    <em>phi-2</em> is a product of Microsoft Research. The CVE dataset was constructed by the author. Training was conducted on Google Colab with Weights &amp; Biases experiment tracking. ROUGE evaluation used the Hugging Face <code>datasets</code> metric library.
+  </div>
+
+  <!-- Small Bohr-style atom in footer -->
+  <svg class="footer-atom" width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <g fill="none" stroke="#6b4f2e" stroke-width="0.7">
+      <circle cx="40" cy="40" r="6"/>
+      <circle cx="40" cy="40" r="13"/>
+      <circle cx="40" cy="40" r="21"/>
+      <circle cx="40" cy="40" r="30"/>
+    </g>
+    <g fill="#6b4f2e">
+      <circle cx="46" cy="40" r="1.5"/>
+      <circle cx="53" cy="40" r="1.5"/>
+      <circle cx="61" cy="40" r="1.5"/>
+      <circle cx="70" cy="40" r="1.5"/>
+    </g>
+    <text x="43" y="37" font-family="Courier New" font-size="6" fill="#9b7a52">2</text>
+    <text x="50" y="37" font-family="Courier New" font-size="6" fill="#9b7a52">8</text>
+    <text x="57" y="37" font-family="Courier New" font-size="6" fill="#9b7a52">18</text>
+  </svg>
+</footer>
+
+</body>
+</html>
